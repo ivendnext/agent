@@ -71,19 +71,23 @@ class Proxy(Server):
                 Path(os.path.join(host_directory, "codeserver")).touch()
 
     @job("Add Site to Upstream")
-    def add_site_to_upstream_job(self, upstream, site, skip_reload=False):
-        self.add_site_to_upstream(upstream, site)
+    def add_site_to_upstream_job(self, upstream, site, skip_reload=False, status=None):
+        self.add_site_to_upstream(upstream, site, status=status)
         self.generate_proxy_config()
         if skip_reload:
             return
         self.reload_nginx()
 
     @step("Add Site File to Upstream Directory")
-    def add_site_to_upstream(self, upstream, site):
+    def add_site_to_upstream(self, upstream, site, status=None):
         upstream_directory = os.path.join(self.upstreams_directory, upstream)
         os.makedirs(upstream_directory, exist_ok=True)
         site_file = os.path.join(upstream_directory, site)
-        Path(site_file).touch()
+        if not status:
+            Path(site_file).touch()
+        else:
+            with open(site_file, "w") as f:
+                f.write(status)
 
     @job("Add Upstream to Proxy")
     def add_upstream_job(self, upstream):
@@ -313,6 +317,7 @@ class Proxy(Server):
                         "deactivated",
                         "suspended",
                         "suspended_saas",
+                        "restricted",
                     ):
                         actual_upstream = status
                     else:

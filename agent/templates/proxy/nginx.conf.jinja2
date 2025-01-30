@@ -29,6 +29,11 @@ upstream suspended_saas {
 	keepalive 100;
 }
 
+upstream restricted {
+	server 127.0.0.1:10094;
+	keepalive 100;
+}
+
 map $actual_host $upstream_server_hash {
 {% for upstream in upstreams.values() -%}
 	{% for site in upstream["sites"] %}
@@ -261,6 +266,23 @@ server {
 	}
 
 	location = /suspended_saas.html {
+		internal;
+	}
+
+}
+
+
+server {
+	listen 127.0.0.1:10094;
+
+	root {{ error_pages_directory }};
+	error_page 503 /restricted.html;
+
+	location / {
+		return 503;
+	}
+
+	location = /restricted.html {
 		internal;
 	}
 
