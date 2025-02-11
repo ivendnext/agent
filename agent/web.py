@@ -19,6 +19,8 @@ from rq.job import JobStatus
 from agent.base import AgentException
 from agent.builder import ImageBuilder, get_image_build_context_directory
 from agent.database import JSONEncoderForSQLQueryResult
+from agent.database_physical_backup import DatabasePhysicalBackup
+from agent.database_physical_restore import DatabasePhysicalRestore
 from agent.database_server import DatabaseServer
 from agent.exceptions import BenchNotExistsException, SiteNotExistsException
 from agent.job import Job as AgentJob
@@ -713,6 +715,25 @@ def clear_site_cache(bench, site):
 
 
 @application.route(
+    "/benches/<string:bench>/sites/<string:site>/activate",
+    methods=["POST"],
+)
+@validate_bench_and_site
+def activate_site(bench, site):
+    job = Server().activate_site_job(site, bench)
+    return {"job": job}
+
+
+@application.route(
+    "/benches/<string:bench>/sites/<string:site>/deactivate",
+    methods=["POST"],
+)
+def deactivate_site(bench, site):
+    job = Server().deactivate_site_job(site, bench)
+    return {"job": job}
+
+
+@application.route(
     "/benches/<string:bench>/sites/<string:site>/update/migrate",
     methods=["POST"],
 )
@@ -753,6 +774,7 @@ def update_site_recover_migrate(bench, site):
         data["target"],
         data.get("activate", True),
         data.get("rollback_scripts", {}),
+        data.get("restore_touched_tables", True),
     )
     return {"job": job}
 
@@ -1010,6 +1032,41 @@ def update_monitor_rules():
     Monitor().update_rules(data["rules"])
     Monitor().update_routes(data["routes"])
     return {}
+
+
+@application.route("/database/physical-backup", methods=["POST"])
+def physical_backup_database():
+    data = request.json
+    job = DatabasePhysicalBackup(
+        databases=data["databases"],
+        db_user="root",
+        db_host=data["private_ip"],
+        db_password=data["mariadb_root_password"],
+        site_backup_name=data["site_backup"]["name"],
+        snapshot_trigger_url=data["site_backup"]["snapshot_trigger_url"],
+        snapshot_request_key=data["site_backup"]["snapshot_request_key"],
+    ).backup_job()
+    return {"job": job}
+
+
+@application.route("/database/physical-restore", methods=["POST"])
+def physical_restore_database():
+    data = request.json
+    job = DatabasePhysicalRestore(
+        backup_db=data["backup_db"],
+        target_db=data["target_db"],
+        target_db_root_password=data["target_db_root_password"],
+        target_db_port=3306,
+        target_db_host=data["private_ip"],
+        files_metadata=data.get("files_metadata", {}),
+        innodb_tables=data.get("innodb_tables", []),
+        myisam_tables=data.get("myisam_tables", []),
+        table_schema=data.get("table_schema", ""),
+        backup_db_base_directory=data.get("backup_db_base_directory", ""),
+        restore_specific_tables=data.get("restore_specific_tables", False),
+        tables_to_restore=data.get("tables_to_restore", []),
+    ).restore_job()
+    return {"job": job}
 
 
 @application.route("/database/binary/logs")
@@ -1464,4 +1521,59 @@ def recover_update_inplace(bench: str):
         request.json.get("sites"),
         request.json.get("image"),
     )
+    return {"job": job}
+
+
+@application.route("/devboxes", methods=["POST"])
+def new_devbox():
+    data = request.json
+    devbox_name = data.get("devbox_name")
+    vnc_password = data.get("vnc_password")
+    codeserver_password = data.get("codeserver_password")
+    devbox_image_reference = data.get("devbox_image_reference")
+    job = Server().new_devbox(
+        devbox_name=devbox_name,
+        vnc_password=vnc_password,
+        codeserver_password=codeserver_password,
+        devbox_image_reference=devbox_image_reference,
+    )
+    return {"job": job}
+
+
+@application.route("/devboxes/<string:devbox_name>/start", methods=["POST"])
+def start_devbox(devbox_name: str):
+    data = request.json
+    job = Server().start_devbox(
+        devbox_name=devbox_name,
+        vnc_password=data.get("vnc_password"),
+        codeserver_password=data.get("codeserver_password"),
+        devbox_image_reference=data.get("devbox_image_reference"),
+    )
+    return {"job": job}
+
+
+@application.route("/devboxes/<string:devbox_name>/stop", methods=["POST"])
+def stop_devbox(devbox_name: str):
+    job = Server().stop_devbox(devbox_name=devbox_name)
+    return {"job": job}
+
+
+@application.route("/devboxes/<string:devbox_name>/status", methods=["POST"])
+def get_devbox_status(devbox_name: str):
+    result = Server().get_devbox_status(devbox_name=devbox_name)
+    result["start"] = result["start"].isoformat()
+    result["end"] = result["end"].isoformat()
+    result["duration"] = result["duration"].total_seconds()
+    return jsonify(result)
+
+
+@application.route("/devboxes/<string:devbox_name>/docker_volumes_size", methods=["POST"])
+def get_devbox_docker_volumes_size(devbox_name: str):
+    result = Server().get_devbox_docker_volumes_size(devbox_name=devbox_name)
+    return {"message": result}
+
+
+@application.route("/devboxes/<string:devbox_name>/destroy", methods=["POST"])
+def destroy_devbox(devbox_name: str):
+    job = Server().destroy_devbox(devbox_name=devbox_name)
     return {"job": job}

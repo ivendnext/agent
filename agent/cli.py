@@ -60,9 +60,11 @@ def ping_server(password: str):
 @click.option("--workers", required=True, type=int)
 @click.option("--proxy-ip", required=False, type=str, default=None)
 @click.option("--sentry-dsn", required=False, type=str)
-def config(name, user, workers, proxy_ip=None, sentry_dsn=None):
+@click.option("--is_devbox_proxy", required=False, type=str, default=False)
+def config(name, user, workers, proxy_ip=None, sentry_dsn=None, is_devbox_proxy=None):
     config = {
         "benches_directory": f"/home/{user}/benches",
+        "devboxes_directory": f"/home/{user}/devboxes",
         "name": name,
         "tls_directory": f"/home/{user}/agent/tls",
         "nginx_directory": f"/home/{user}/agent/nginx",
@@ -76,6 +78,8 @@ def config(name, user, workers, proxy_ip=None, sentry_dsn=None):
         config["proxy_ip"] = proxy_ip
     if sentry_dsn:
         config["sentry_dsn"] = sentry_dsn
+    if is_devbox_proxy:
+        config["is_devbox_proxy"] = is_devbox_proxy
 
     with open("config.json", "w") as f:
         json.dump(config, f, sort_keys=True, indent=4)
@@ -147,7 +151,7 @@ def site_analytics():
     stderr = os.path.join(logs_directory, "analytics.error.log")
 
     cron = CronTab(user=True)
-    command = f"cd {agent_directory} && {sys.executable} {script}" f" 1>> {stdout} 2>> {stderr}"
+    command = f"cd {agent_directory} && {sys.executable} {script} 1>> {stdout} 2>> {stderr}"
 
     if command in str(cron):
         cron.remove_all(command=command)
@@ -170,7 +174,7 @@ def usage():
     stderr = os.path.join(logs_directory, "usage.error.log")
 
     cron = CronTab(user=True)
-    command = f"cd {agent_directory} && {sys.executable} {script}" f" 1>> {stdout} 2>> {stderr}"
+    command = f"cd {agent_directory} && {sys.executable} {script} 1>> {stdout} 2>> {stderr}"
 
     if command not in str(cron):
         job = cron.new(command=command)

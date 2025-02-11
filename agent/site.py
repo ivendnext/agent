@@ -273,7 +273,7 @@ class Site(Base):
             "FLUSH PRIVILEGES",
         ]
         for query in queries:
-            command = f"mysql -h {self.host} -uroot -p{mariadb_root_password}" f' -e "{query}"'
+            command = f'mysql -h {self.host} -uroot -p{mariadb_root_password} -e "{query}"'
             self.execute(command)
         return {"database": database, "user": user, "password": password}
 
@@ -530,6 +530,16 @@ class Site(Base):
             cmd += " --skip-failing"
         return self.bench_execute(cmd)
 
+    @step("Log Touched Tables")
+    def log_touched_tables(self):
+        try:
+            # It will either return the touched tables
+            # or try to return the previous tables
+            return self.tables_to_restore
+        except Exception:
+            # If both file is not there, assume no tables are touched
+            return []
+
     @step("Build Search Index")
     def build_search_index(self):
         return self.bench_execute("build-search-index")
@@ -568,11 +578,7 @@ class Site(Base):
 
     def _restore_touched_tables(self):
         data = {"restored": {}}
-        try:
-            tables_to_restore = self.touched_tables
-        except Exception:
-            tables_to_restore = self.previous_tables
-        for table in tables_to_restore:
+        for table in self.tables_to_restore:
             backup_file = os.path.join(self.backup_directory, f"{table}.sql.gz")
             if os.path.exists(backup_file):
                 output = self.execute(
@@ -661,11 +667,17 @@ frappe.local.login_manager.login_as(user)
 print(">>>" + frappe.session.sid + "<<<")
 """
 
-        output = self.bench_execute("console", input=code)["output"]
-        sid = re.search(r">>>(.*)<<<", output).group(1)
-        if not sid or sid == user or sid == "Guest":  # case when it fails
-            output = self.bench_execute(f"browse --user {user}")["output"]
-            sid = re.search(r"\?sid=([a-z0-9]*)", output).group(1)
+        sid = None
+        if (output := self.bench_execute("console", input=code)["output"]) and (
+            res := re.search(r">>>(.*)<<<", output)
+        ):
+            sid = res.group(1)
+        if (
+            (not sid or sid == user or sid == "Guest")
+            and (output := self.bench_execute(f"browse --user {user}")["output"])
+            and (res := re.search(r"\?sid=([a-z0-9]*)", output))
+        ):
+            sid = res.group(1)
         return sid
 
     @property
@@ -700,6 +712,13 @@ print(">>>" + frappe.session.sid + "<<<")
         with open(self.previous_tables_file, "r") as f:
             return json.load(f)
 
+    @property
+    def tables_to_restore(self):
+        try:
+            return self.touched_tables
+        except Exception:
+            return self.previous_tables
+
     @job("Backup Site", priority="low")
     def backup_job(self, with_files=False, offsite=None):
         backup_files = self.backup(with_files)
@@ -718,7 +737,7 @@ print(">>>" + frappe.session.sid + "<<<")
         for table in tables:
             query = f"OPTIMIZE TABLE `{table}`"
             self.execute(
-                f"mysql -sN -h {self.host} -u{self.user} -p{self.password}" f" {self.database} -e '{query}'"
+                f"mysql -sN -h {self.host} -u{self.user} -p{self.password} {self.database} -e '{query}'"
             )
 
     def fetch_latest_backup(self, with_files=True):
@@ -782,7 +801,7 @@ print(">>>" + frappe.session.sid + "<<<")
             f' WHERE `table_schema` = "{self.database}"'
             " GROUP BY `table_schema`"
         )
-        command = f"mysql -sN -h {self.host} -u{self.user} -p{self.password}" f" -e '{query}'"
+        command = f"mysql -sN -h {self.host} -u{self.user} -p{self.password} -e '{query}'"
         database_size = self.execute(command).get("output")
 
         try:
@@ -828,7 +847,7 @@ print(">>>" + frappe.session.sid + "<<<")
             f' WHERE `table_schema` = "{self.database}"'
             " GROUP BY `table_schema`"
         )
-        command = f"mysql -sN -h {self.host} -u{self.user} -p{self.password}" f" -e '{query}'"
+        command = f"mysql -sN -h {self.host} -u{self.user} -p{self.password} -e '{query}'"
         database_size = self.execute(command).get("output")
 
         try:
@@ -846,7 +865,7 @@ print(">>>" + frappe.session.sid + "<<<")
                 " AND ((`data_free` / (`data_length` + `index_length`)) > 0.2"
                 " OR `data_free` > 100 * 1024 * 1024)"
             )
-            command = f"mysql -sN -h {self.host} -u{self.user} -p{self.password}" f" -e '{query}'"
+            command = f"mysql -sN -h {self.host} -u{self.user} -p{self.password} -e '{query}'"
             output = self.execute(command).get("output")
             return [line.split("\t") for line in output.splitlines()]
         except Exception:
@@ -949,7 +968,5 @@ print(">>>" + frappe.session.sid + "<<<")
 
     def generate_theme_files(self):
         self.bench_execute(
-            "execute"
-            " frappe.website.doctype.website_theme.website_theme"
-            ".generate_theme_files_if_not_exist"
+            "execute frappe.website.doctype.website_theme.website_theme.generate_theme_files_if_not_exist"
         )
