@@ -73,9 +73,9 @@ class Proxy(Server):
                 Path(os.path.join(host_directory, "codeserver")).touch()
 
     @job("Add Site to Upstream")
-    def add_site_to_upstream_job(self, upstream, site, skip_reload=False):
+    def add_site_to_upstream_job(self, upstream, site, skip_reload=False, status=None):
         self.remove_conflicting_site(site)
-        self.add_site_to_upstream(upstream, site)
+        self.add_site_to_upstream(upstream, site, status=status)
         self.generate_proxy_config()
         if skip_reload:
             return
