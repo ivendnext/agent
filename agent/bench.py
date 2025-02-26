@@ -15,6 +15,7 @@ from pathlib import Path, PurePath
 from random import choices
 from textwrap import indent
 from typing import TYPE_CHECKING, TypedDict
+from shlex import quote
 
 import requests
 
@@ -266,7 +267,7 @@ class Bench(Base):
             "FLUSH PRIVILEGES",
         ]
         for query in queries:
-            command = f'mysql -h {self.host} -uroot -p{mariadb_root_password} -e "{query}"'
+            command = f'mysql -h {self.host} -uroot -p{quote(mariadb_root_password)} -e "{query}"'
             self.execute(command)
         return database, user, password
 
@@ -279,7 +280,7 @@ class Bench(Base):
             "FLUSH PRIVILEGES",
         ]
         for query in queries:
-            command = f'mysql -h {self.host} -uroot -p{mariadb_root_password} -e "{query}"'
+            command = f'mysql -h {self.host} -uroot -p{quote(mariadb_root_password)} -e "{query}"'
             self.execute(command)
 
     def fetch_monitor_data(self):

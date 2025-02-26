@@ -273,7 +273,7 @@ class Site(Base):
             "FLUSH PRIVILEGES",
         ]
         for query in queries:
-            command = f'mysql -h {self.host} -uroot -p{mariadb_root_password} -e "{query}"'
+            command = f'mysql -h {self.host} -uroot -p{quote(mariadb_root_password)} -e "{query}"'
             self.execute(command)
         return {"database": database, "user": user, "password": password}
 
